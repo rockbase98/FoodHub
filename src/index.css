@@ -1,0 +1,174 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Swiggy/Zomato-inspired Color Palette */
+    --background: 0 0% 98%;
+    --foreground: 0 0% 10%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 10%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 14 100% 57%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 45 100% 51%;
+    --secondary-foreground: 0 0% 10%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 350 89% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 14 100% 57%;
+    --radius: 1rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer utilities {
+  /* Swiggy/Zomato Gradients */
+  .gradient-primary {
+    background: linear-gradient(135deg, #FF6B35 0%, #FF8E53 100%);
+  }
+  
+  .gradient-food {
+    background: linear-gradient(135deg, #FFA940 0%, #FFBB40 100%);
+  }
+  
+  .gradient-success {
+    background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+  }
+  
+  /* Card Shadows - Swiggy Style */
+  .card-shadow {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+  
+  .card-shadow-lg {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+  
+  .card-hover {
+    transition: all 0.3s ease;
+  }
+  
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Food App Specific */
+  .veg-badge {
+    @apply inline-flex items-center justify-center w-4 h-4 border-2 border-green-600 rounded-sm;
+  }
+  
+  .veg-badge::after {
+    content: '';
+    @apply w-2 h-2 bg-green-600 rounded-full;
+  }
+  
+  .non-veg-badge {
+    @apply inline-flex items-center justify-center w-4 h-4 border-2 border-red-600 rounded-sm;
+  }
+  
+  .non-veg-badge::after {
+    content: '';
+    @apply w-2 h-2 bg-red-600 rounded-full;
+  }
+  
+  /* Discount Badge */
+  .discount-badge {
+    @apply absolute top-3 left-3 bg-accent text-accent-foreground text-xs font-bold px-2 py-1 rounded-md shadow-md;
+  }
+  
+  /* Rating Star */
+  .rating-star {
+    @apply text-yellow-500 fill-yellow-500;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Horizontal Scrollbar with Custom Styling - Always Visible */
+.scrollbar-custom {
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(0, 0, 0, 0.3) rgba(0, 0, 0, 0.05);
+  -webkit-overflow-scrolling: touch;
+}
+
+.scrollbar-custom::-webkit-scrollbar {
+  height: 10px;
+  display: block;
+}
+
+.scrollbar-custom::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+  margin: 0 10px;
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.3);
+  border-radius: 10px;
+  border: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb:active {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+/* Hide Scrollbar but Keep Scroll Functionality */
+.scrollbar-hide {
+  overflow-x: scroll;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
