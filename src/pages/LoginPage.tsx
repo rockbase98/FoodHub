@@ -9,14 +9,31 @@ import { useAuthStore } from '../stores/authStore';
 import { toast } from 'sonner';
 import { User } from '@supabase/supabase-js';
 import { AuthUser } from '../types';
+import { supabase } from '../lib/supabase';
 
-function mapSupabaseUser(user: User): AuthUser {
+async function mapSupabaseUser(user: User): Promise<AuthUser> {
+  // First try to get role from user_metadata
+  let role = user.user_metadata?.role || 'customer';
+  
+  // If not in metadata, fetch from user_profiles table
+  if (!user.user_metadata?.role) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    
+    if (profile?.role) {
+      role = profile.role;
+    }
+  }
+  
   return {
     id: user.id,
     email: user.email!,
     username: user.user_metadata?.username || user.email!.split('@')[0],
     avatar: user.user_metadata?.avatar_url,
-    role: user.user_metadata?.role || 'customer',
+    role,
     phone: user.user_metadata?.phone,
   };
 }
@@ -34,7 +51,7 @@ export default function LoginPage() {
 
     try {
       const user = await authService.signInWithPassword(email, password);
-      const authUser = mapSupabaseUser(user);
+      const authUser = await mapSupabaseUser(user);
       login(authUser);
       
       switch (authUser.role) {

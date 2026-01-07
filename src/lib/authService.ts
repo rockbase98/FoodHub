@@ -25,18 +25,27 @@ export class AuthService {
     });
     if (error) throw error;
 
+    // Update auth user metadata with password and role
     const { data: updateData, error: updateError } = await supabase.auth.updateUser({
       password,
       data: { username, role, phone },
     });
     if (updateError) throw updateError;
 
+    // Update user_profiles table with role and phone
     const { error: profileError } = await supabase
       .from('user_profiles')
-      .update({ role, phone })
+      .update({ 
+        username,
+        role, 
+        phone 
+      })
       .eq('id', updateData.user.id);
 
-    if (profileError) throw profileError;
+    if (profileError) {
+      console.error('Profile update error:', profileError);
+      // Don't throw - user is still created, profile update can be retried
+    }
 
     return updateData.user;
   }

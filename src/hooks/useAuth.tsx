@@ -4,13 +4,29 @@ import { useAuthStore } from '../stores/authStore';
 import { AuthUser } from '../types';
 import { User } from '@supabase/supabase-js';
 
-function mapSupabaseUser(user: User): AuthUser {
+async function mapSupabaseUser(user: User): Promise<AuthUser> {
+  // First try to get role from user_metadata
+  let role = user.user_metadata?.role || 'customer';
+  
+  // If not in metadata, fetch from user_profiles table
+  if (!user.user_metadata?.role) {
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    
+    if (profile?.role) {
+      role = profile.role;
+    }
+  }
+  
   return {
     id: user.id,
     email: user.email!,
     username: user.user_metadata?.username || user.email!.split('@')[0],
     avatar: user.user_metadata?.avatar_url,
-    role: user.user_metadata?.role || 'customer',
+    role,
     phone: user.user_metadata?.phone,
   };
 }
@@ -21,26 +37,29 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (mounted && session?.user) {
-        login(mapSupabaseUser(session.user));
+        const authUser = await mapSupabaseUser(session.user);
+        login(authUser);
       }
       if (mounted) setLoading(false);
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
       if (event === 'SIGNED_IN' && session?.user) {
-        login(mapSupabaseUser(session.user));
+        const authUser = await mapSupabaseUser(session.user);
+        login(authUser);
         setLoading(false);
       } else if (event === 'SIGNED_OUT') {
         logout();
         setLoading(false);
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        login(mapSupabaseUser(session.user));
+        const authUser = await mapSupabaseUser(session.user);
+        login(authUser);
       }
     });
 
