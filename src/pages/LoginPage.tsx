@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { User } from '@supabase/supabase-js';
 import { AuthUser } from '../types';
 import { supabase } from '../lib/supabase';
+import { getCurrentLocation } from '../lib/utils';
 
 async function mapSupabaseUser(user: User): Promise<AuthUser> {
   // First try to get role from user_metadata
@@ -53,6 +54,53 @@ export default function LoginPage() {
       const user = await authService.signInWithPassword(email, password);
       const authUser = await mapSupabaseUser(user);
       login(authUser);
+      
+      // Update current location automatically on login
+      try {
+        const location = await getCurrentLocation();
+        
+        // Check if user has any address, if not create one
+        if (authUser.role === 'customer' || authUser.role === 'delivery_partner') {
+          const { data: existingAddresses } = await supabase
+            .from('addresses')
+            .select('id')
+            .eq('user_id', user.id)
+            .limit(1);
+          
+          if (!existingAddresses || existingAddresses.length === 0) {
+            // Create first address automatically
+            await supabase.from('addresses').insert({
+              user_id: user.id,
+              label: 'Current Location',
+              address_line: 'Auto-detected location',
+              lat: location.lat,
+              lng: location.lng,
+              is_default: true,
+            });
+            toast.success('Location saved automatically');
+          } else {
+            // Update default address location
+            await supabase.from('addresses')
+              .update({
+                lat: location.lat,
+                lng: location.lng,
+              })
+              .eq('user_id', user.id)
+              .eq('is_default', true);
+          }
+        }
+        
+        // Update delivery partner location
+        if (authUser.role === 'delivery_partner') {
+          await supabase.from('delivery_partners').update({
+            current_lat: location.lat,
+            current_lng: location.lng,
+          }).eq('user_id', user.id);
+        }
+      } catch (locError) {
+        console.error('Location update failed:', locError);
+        // Don't block login if location fails
+      }
       
       switch (authUser.role) {
         case 'customer':
