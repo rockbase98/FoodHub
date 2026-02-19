@@ -36,6 +36,7 @@ import AdminRiders from './pages/admin/AdminRiders';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminAddKitchen from './pages/admin/AdminAddKitchen';
 import AdminKitchenManage from './pages/admin/AdminKitchenManage';
+import AdminCoupons from './pages/admin/AdminCoupons';
 
 // Grocery Page
 import DesiDidiMart from './pages/customer/DesiDidiMart';
@@ -149,6 +150,10 @@ function App() {
         <Route
           path="/admin/kitchen/:id/settings"
           element={user && user.role === 'admin' ? <AdminKitchenManage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/admin/coupons"
+          element={user && user.role === 'admin' ? <AdminCoupons /> : <Navigate to="/login" />}
         />
 
         {/* Fallback */}

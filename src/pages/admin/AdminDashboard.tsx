@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Bike, Package, LogOut, TrendingUp, Users, DollarSign, Activity, Plus } from 'lucide-react';
+import { LayoutDashboard, Store, Bike, Package, LogOut, TrendingUp, Users, DollarSign, Activity, Plus, Percent } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../stores/authStore';
@@ -136,7 +136,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link to="/admin/kitchens">
             <div className="bg-card border rounded-lg p-6 hover:card-shadow transition-shadow cursor-pointer">
               <div className="flex items-center gap-4">
@@ -180,6 +180,20 @@ export default function AdminDashboard() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-lg">View All Orders</h3>
                   <p className="text-sm text-muted-foreground">Monitor platform orders</p>
+                </div>
+              </div>
+            </div>
+          </Link>
+
+          <Link to="/admin/coupons">
+            <div className="bg-card border rounded-lg p-6 hover:card-shadow transition-shadow cursor-pointer">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-lg bg-orange-100 flex items-center justify-center">
+                  <Percent className="h-7 w-7 text-orange-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">Manage Coupons</h3>
+                  <p className="text-sm text-muted-foreground">Create & manage discount coupons</p>
                 </div>
               </div>
             </div>
