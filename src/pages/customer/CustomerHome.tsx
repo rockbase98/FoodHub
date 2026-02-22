@@ -34,6 +34,7 @@ export default function CustomerHome() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [filterVeg, setFilterVeg] = useState<boolean | null>(null);
   const [sortBy, setSortBy] = useState<'rating' | 'distance' | 'time'>('rating');
+  const [locationLoading, setLocationLoading] = useState(false);
   const user = useAuthStore((state) => state.user);
   const cartItems = useCartStore((state) => state.items);
   const categoryScrollRef = useRef<HTMLDivElement>(null);
@@ -53,11 +54,53 @@ export default function CustomerHome() {
   }, []);
 
   const loadUserLocation = async () => {
+    setLocationLoading(true);
     try {
+      toast.loading('Getting your location...');
       const location = await getCurrentLocation();
       setUserLocation(location);
-    } catch (error) {
-      console.log('Location access denied');
+      toast.dismiss();
+      toast.success(`Location updated: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`);
+      
+      // Save location to user's default address if logged in
+      if (user) {
+        try {
+          const { data: existingAddress } = await supabase
+            .from('addresses')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('is_default', true)
+            .single();
+
+          if (existingAddress) {
+            await supabase
+              .from('addresses')
+              .update({
+                lat: location.lat,
+                lng: location.lng,
+                address_line: `Lat: ${location.lat.toFixed(4)}, Lng: ${location.lng.toFixed(4)}`,
+              })
+              .eq('id', existingAddress.id);
+          } else {
+            await supabase.from('addresses').insert({
+              user_id: user.id,
+              label: 'Current Location',
+              address_line: `Lat: ${location.lat.toFixed(4)}, Lng: ${location.lng.toFixed(4)}`,
+              lat: location.lat,
+              lng: location.lng,
+              is_default: true,
+            });
+          }
+        } catch (dbError) {
+          console.error('Failed to save location to database:', dbError);
+        }
+      }
+    } catch (error: any) {
+      toast.dismiss();
+      toast.error(error.message || 'Failed to get location');
+      console.error('Location error:', error);
+    } finally {
+      setLocationLoading(false);
     }
   };
 
@@ -196,12 +239,24 @@ export default function CustomerHome() {
                 </div>
                 <button 
                   onClick={loadUserLocation}
-                  className="flex items-center gap-1.5 text-sm font-bold hover:text-primary transition-colors group"
+                  disabled={locationLoading}
+                  className="flex items-center gap-1.5 text-sm font-bold hover:text-primary transition-colors group disabled:opacity-50"
                 >
-                  <span className="underline decoration-dotted underline-offset-2">
-                    {userLocation ? 'Current Location' : 'Select Location'}
-                  </span>
-                  <ChevronDown className="h-4 w-4 group-hover:translate-y-0.5 transition-transform" />
+                  {locationLoading ? (
+                    <>
+                      <span className="underline decoration-dotted underline-offset-2">Getting location...</span>
+                      <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+                    </>
+                  ) : (
+                    <>
+                      <span className="underline decoration-dotted underline-offset-2">
+                        {userLocation 
+                          ? `📍 ${userLocation.lat.toFixed(2)}, ${userLocation.lng.toFixed(2)}` 
+                          : '📍 Get Current Location'}
+                      </span>
+                      <ChevronDown className="h-4 w-4 group-hover:translate-y-0.5 transition-transform" />
+                    </>
+                  )}
                 </button>
               </div>
             </div>

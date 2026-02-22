@@ -86,20 +86,51 @@ export function getOrderStatusText(status: string): string {
 export async function getCurrentLocation(): Promise<{ lat: number; lng: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('Geolocation is not supported'));
+      reject(new Error('Geolocation is not supported by your browser'));
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        console.log('Location captured:', position.coords.latitude, position.coords.longitude);
         resolve({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
       },
       (error) => {
-        reject(error);
+        console.error('Location error:', error);
+        let errorMessage = 'Failed to get location';
+        
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Location permission denied. Please enable location access in your browser settings.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information unavailable. Please check your GPS/internet connection.';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out. Please try again.';
+            break;
+        }
+        
+        reject(new Error(errorMessage));
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
       }
     );
   });
+}
+
+export async function requestLocationPermission(): Promise<boolean> {
+  try {
+    const position = await getCurrentLocation();
+    return true;
+  } catch (error) {
+    console.error('Location permission denied:', error);
+    return false;
+  }
 }
