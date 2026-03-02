@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Star, Clock, MapPin, Plus, Minus, ShoppingCart, Info } from 'lucide-react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { ArrowLeft, Star, Clock, MapPin, Plus, Minus, ShoppingCart, Info, AlertTriangle, Navigation } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { supabase } from '../../lib/supabase';
-import { Kitchen, MenuItem } from '../../types';
+import { Kitchen, MenuItem, Address } from '../../types';
 import { useCartStore } from '../../stores/cartStore';
 import { useAuthStore } from '../../stores/authStore';
-import { formatCurrency } from '../../lib/utils';
+import { formatCurrency, calculateDistance, formatDistance } from '../../lib/utils';
 import { toast } from 'sonner';
 
 export default function KitchenDetail() {
@@ -19,10 +20,39 @@ export default function KitchenDetail() {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const { items, addItem, updateQuantity, kitchenId, getTotal } = useCartStore();
+  
+  // Delivery radius validation
+  const [userAddress, setUserAddress] = useState<Address | null>(null);
+  const [distanceFromKitchen, setDistanceFromKitchen] = useState<number | null>(null);
+  const [isOutOfRange, setIsOutOfRange] = useState(false);
+  const [nearbyKitchens, setNearbyKitchens] = useState<Kitchen[]>([]);
 
   useEffect(() => {
     loadKitchenData();
-  }, [id]);
+    if (user) {
+      loadUserDefaultAddress();
+    }
+  }, [id, user]);
+
+  useEffect(() => {
+    if (kitchen && userAddress && kitchen.lat && kitchen.lng && userAddress.lat && userAddress.lng) {
+      const distance = calculateDistance(
+        kitchen.lat,
+        kitchen.lng,
+        userAddress.lat,
+        userAddress.lng
+      );
+      setDistanceFromKitchen(distance);
+      
+      const deliveryRadius = kitchen.delivery_radius || 10;
+      if (distance > deliveryRadius) {
+        setIsOutOfRange(true);
+        loadNearbyKitchens(userAddress.lat, userAddress.lng, deliveryRadius);
+      } else {
+        setIsOutOfRange(false);
+      }
+    }
+  }, [kitchen, userAddress]);
 
   const loadKitchenData = async () => {
     try {
@@ -41,6 +71,48 @@ export default function KitchenDetail() {
       navigate('/customer');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadUserDefaultAddress = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('addresses')
+        .select('*')
+        .eq('user_id', user!.id)
+        .eq('is_default', true)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      setUserAddress(data);
+    } catch (error: any) {
+      console.error('Failed to load user address:', error);
+    }
+  };
+
+  const loadNearbyKitchens = async (lat: number, lng: number, maxRadius: number) => {
+    try {
+      const { data, error } = await supabase
+        .from('kitchens')
+        .select('*')
+        .eq('is_approved', true)
+        .eq('is_open', true)
+        .neq('id', id);
+
+      if (error) throw error;
+
+      const kitchensWithDistance = (data || [])
+        .map((k) => ({
+          ...k,
+          distance: k.lat && k.lng ? calculateDistance(lat, lng, k.lat, k.lng) : null,
+        }))
+        .filter((k) => k.distance !== null && k.distance <= (k.delivery_radius || 10))
+        .sort((a, b) => (a.distance || 0) - (b.distance || 0))
+        .slice(0, 3);
+
+      setNearbyKitchens(kitchensWithDistance);
+    } catch (error: any) {
+      console.error('Failed to load nearby kitchens:', error);
     }
   };
 
@@ -113,6 +185,123 @@ export default function KitchenDetail() {
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-center gap-2">
               <Info className="h-4 w-4 text-destructive" />
               <span className="text-sm font-medium text-destructive">Currently Closed</span>
+            </div>
+          )}
+
+          {/* Delivery Radius Warning */}
+          {isOutOfRange && distanceFromKitchen && (
+            <div className="mt-3 space-y-3">
+              <Alert className="border-destructive/50 bg-destructive/10">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                <AlertDescription className="mt-2">
+                  <p className="font-bold text-destructive mb-2">
+                    ⚠️ Out of Delivery Range
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-1">
+                    This restaurant delivers within <strong>{kitchen.delivery_radius || 10} km</strong>
+                  </p>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Your location is <strong>{distanceFromKitchen.toFixed(1)} km</strong> away
+                  </p>
+                  <div className="flex gap-2">
+                    <Link to="/customer/addresses">
+                      <Button size="sm" variant="outline" className="text-xs">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        Change Address
+                      </Button>
+                    </Link>
+                    {nearbyKitchens.length > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs"
+                        onClick={() => {
+                          const element = document.getElementById('nearby-alternatives');
+                          element?.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                      >
+                        View Alternatives
+                      </Button>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+
+              {/* Nearby Alternatives */}
+              {nearbyKitchens.length > 0 && (
+                <div id="nearby-alternatives" className="bg-card border rounded-lg p-4">
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <Navigation className="h-4 w-4 text-primary" />
+                    Available Nearby ({nearbyKitchens.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {nearbyKitchens.map((nearby) => {
+                      const distance = nearby.distance as number;
+                      return (
+                        <Link
+                          key={nearby.id}
+                          to={`/customer/kitchen/${nearby.id}`}
+                          className="block p-3 border rounded-lg hover:bg-muted transition-colors"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-orange-400 to-pink-400 flex-shrink-0">
+                              {nearby.image_url ? (
+                                <img
+                                  src={nearby.image_url}
+                                  alt={nearby.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <span className="text-lg">🍽️</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm">{nearby.name}</h4>
+                              <div className="flex items-center gap-2 mt-1">
+                                <Badge variant="secondary" className="text-xs">
+                                  <MapPin className="h-3 w-3 mr-1" />
+                                  {formatDistance(distance)}
+                                </Badge>
+                                <Badge variant="secondary" className="text-xs">
+                                  <Star className="h-3 w-3 mr-1 fill-yellow-500 text-yellow-500" />
+                                  {nearby.rating.toFixed(1)}
+                                </Badge>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs text-muted-foreground">Delivers in</p>
+                              <p className="text-xs font-semibold">{nearby.delivery_time}</p>
+                            </div>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Distance & Delivery Fee Info */}
+          {!isOutOfRange && distanceFromKitchen !== null && (
+            <div className="mt-3 bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-green-700">
+                  <Navigation className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    {formatDistance(distanceFromKitchen)} away
+                  </span>
+                </div>
+                <div className="text-sm text-green-600">
+                  {distanceFromKitchen <= 2 ? (
+                    <span className="font-semibold">🎉 Free Delivery!</span>
+                  ) : (
+                    <span>Delivery: {formatCurrency(20 + Math.ceil(distanceFromKitchen - 2) * 8)}</span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
