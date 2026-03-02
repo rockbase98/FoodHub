@@ -138,7 +138,7 @@ export default function CustomerProfile() {
         {/* Quick Actions */}
         <div className="bg-card rounded-2xl p-4 card-shadow">
           <button
-            onClick={() => navigate('/customer/orders')}
+            onClick={() => navigate('/customer/addresses')}
             className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-muted/50 transition-colors"
           >
             <div className="flex items-center gap-3">

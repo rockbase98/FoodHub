@@ -16,6 +16,7 @@ import OrderTracking from './pages/customer/OrderTracking';
 import CustomerOrders from './pages/customer/CustomerOrders';
 import CustomerProfile from './pages/customer/CustomerProfile';
 import ReviewPage from './pages/customer/ReviewPage';
+import AddressManagement from './pages/customer/AddressManagement';
 
 // Kitchen Owner Pages
 import KitchenDashboard from './pages/kitchen/KitchenDashboard';
@@ -83,6 +84,10 @@ function App() {
         <Route
           path="/customer/review"
           element={user && user.role === 'customer' ? <ReviewPage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/customer/addresses"
+          element={user && user.role === 'customer' ? <AddressManagement /> : <Navigate to="/login" />}
         />
         <Route path="/grocery" element={<DesiDidiMart />} />
 
