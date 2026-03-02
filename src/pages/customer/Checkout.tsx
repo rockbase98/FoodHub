@@ -17,7 +17,20 @@ import { toast } from 'sonner';
 export default function Checkout() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
-  const { items, kitchenId, clearCart, updateQuantity, getTotal } = useCartStore();
+  const { items, kitchenId, clearCart, updateQuantity, getTotal, multiKitchenCarts, multiRestaurantMode } = useCartStore();
+  
+  // Redirect to multi-restaurant checkout if multiple kitchens in cart
+  useEffect(() => {
+    if (multiRestaurantMode && multiKitchenCarts.length > 1) {
+      navigate('/customer/multi-checkout');
+      return;
+    }
+    if (items.length === 0 || !kitchenId) {
+      navigate('/customer');
+      return;
+    }
+  }, [multiRestaurantMode, multiKitchenCarts, items, kitchenId, navigate]);
+  
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [kitchen, setKitchen] = useState<Kitchen | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
@@ -39,14 +52,13 @@ export default function Checkout() {
   const [nearbyKitchens, setNearbyKitchens] = useState<Kitchen[]>([]);
 
   useEffect(() => {
-    if (items.length === 0 || !kitchenId) {
-      navigate('/customer');
-      return;
+    if (multiRestaurantMode && multiKitchenCarts.length > 1) {
+      return; // Already redirected
     }
     loadAddresses();
     loadKitchen();
     loadCoupons();
-  }, [kitchenId]);
+  }, [kitchenId, multiRestaurantMode, multiKitchenCarts]);
 
   useEffect(() => {
     if (selectedAddress && kitchen && kitchen.lat && kitchen.lng) {

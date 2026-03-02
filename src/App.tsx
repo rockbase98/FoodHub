@@ -15,8 +15,8 @@ import Checkout from './pages/customer/Checkout';
 import OrderTracking from './pages/customer/OrderTracking';
 import CustomerOrders from './pages/customer/CustomerOrders';
 import CustomerProfile from './pages/customer/CustomerProfile';
-import ReviewPage from './pages/customer/ReviewPage';
 import AddressManagement from './pages/customer/AddressManagement';
+import MultiRestaurantCheckout from './pages/customer/MultiRestaurantCheckout';
 
 // Kitchen Owner Pages
 import KitchenDashboard from './pages/kitchen/KitchenDashboard';
@@ -84,6 +84,10 @@ function App() {
         <Route
           path="/customer/review"
           element={user && user.role === 'customer' ? <ReviewPage /> : <Navigate to="/login" />}
+        />
+        <Route
+          path="/customer/multi-checkout"
+          element={user && user.role === 'customer' ? <MultiRestaurantCheckout /> : <Navigate to="/login" />}
         />
         <Route
           path="/customer/addresses"

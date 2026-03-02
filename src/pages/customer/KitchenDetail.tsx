@@ -19,7 +19,7 @@ export default function KitchenDetail() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-  const { items, addItem, updateQuantity, kitchenId, getTotal } = useCartStore();
+  const { multiKitchenCarts, addItem, updateQuantity, getTotal, getItemsByKitchen, multiRestaurantMode } = useCartStore();
   
   // Delivery radius validation
   const [userAddress, setUserAddress] = useState<Address | null>(null);
@@ -133,8 +133,9 @@ export default function KitchenDetail() {
     ? menuItems.filter((item) => item.category === selectedCategory)
     : menuItems;
 
-  const cartItemsForKitchen = kitchenId === kitchen.id ? items : [];
+  const cartItemsForKitchen = multiRestaurantMode ? getItemsByKitchen(kitchen.id) : [];
   const cartTotal = getTotal();
+  const totalKitchensInCart = multiKitchenCarts.length;
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -404,8 +405,11 @@ export default function KitchenDetail() {
                                 navigate('/login');
                                 return;
                               }
-                              addItem(item, kitchen.id);
-                              toast.success(`${item.name} added!`);
+                              addItem(item, kitchen.id, kitchen.name);
+                              toast.success(`${item.name} added to cart!`);
+                              if (totalKitchensInCart > 0 && !multiKitchenCarts.find(c => c.kitchenId === kitchen.id)) {
+                                toast.info(`🎉 Multi-restaurant order! You can order from multiple places.`);
+                              }
                             }}
                             className="gradient-primary rounded-lg font-bold shadow-md px-6"
                           >
@@ -414,14 +418,14 @@ export default function KitchenDetail() {
                         ) : (
                           <div className="flex items-center gap-0 bg-primary text-white rounded-lg shadow-lg">
                             <button
-                              onClick={() => updateQuantity(item.id, quantity - 1)}
+                              onClick={() => updateQuantity(item.id, quantity - 1, kitchen.id)}
                               className="px-3 py-1.5 hover:bg-primary/90 transition-colors"
                             >
                               <Minus className="h-4 w-4" />
                             </button>
                             <span className="font-bold min-w-[30px] text-center">{quantity}</span>
                             <button
-                              onClick={() => updateQuantity(item.id, quantity + 1)}
+                              onClick={() => updateQuantity(item.id, quantity + 1, kitchen.id)}
                               className="px-3 py-1.5 hover:bg-primary/90 transition-colors"
                             >
                               <Plus className="h-4 w-4" />
@@ -439,7 +443,7 @@ export default function KitchenDetail() {
       </div>
 
       {/* Sticky Cart Footer */}
-      {cartItemsForKitchen.length > 0 && (
+      {(cartItemsForKitchen.length > 0 || totalKitchensInCart > 0) && (
         <div className="fixed bottom-0 left-0 right-0 bg-card border-t shadow-2xl z-50 safe-area-bottom">
           <div className="container mx-auto px-4 py-4">
             <button
@@ -450,9 +454,14 @@ export default function KitchenDetail() {
                 <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
                   <span className="font-bold">{cartItemsForKitchen.length}</span>
                 </div>
-                <span className="text-sm font-medium">
-                  {cartItemsForKitchen.length} {cartItemsForKitchen.length === 1 ? 'item' : 'items'}
-                </span>
+                <div>
+                  <span className="text-sm font-medium">
+                    {cartItemsForKitchen.length} {cartItemsForKitchen.length === 1 ? 'item' : 'items'}
+                  </span>
+                  {totalKitchensInCart > 1 && (
+                    <p className="text-xs opacity-90">+ {totalKitchensInCart - 1} more restaurant{totalKitchensInCart > 2 ? 's' : ''}</p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-3 text-white">
                 <div className="text-right">
