@@ -16,6 +16,7 @@ import { useAuthStore } from '../../stores/authStore';
 import { useCartStore } from '../../stores/cartStore';
 import { Address, Kitchen, Coupon } from '../../types';
 import { formatCurrency, calculateDeliveryFee, calculateDistance, getCurrentLocation, formatDistance } from '../../lib/utils';
+import { CoordinationService } from '../../lib/coordinationService';
 import { toast } from 'sonner';
 
 interface KitchenWithDetails extends Kitchen {
