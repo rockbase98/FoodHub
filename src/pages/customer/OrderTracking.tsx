@@ -1,11 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, MapPin, Phone, Clock, CheckCircle2, Package, Bike, ChefHat, Home, Navigation } from 'lucide-react';
+import { 
+  ArrowLeft, MapPin, Phone, Clock, CheckCircle2, Package, Bike, ChefHat, Home, 
+  Navigation, Store, Route, TrendingUp, AlertCircle, Info 
+} from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
+import { Alert, AlertDescription } from '../../components/ui/alert';
 import { supabase } from '../../lib/supabase';
 import { Order, Kitchen, Address } from '../../types';
-import { formatCurrency, getOrderStatusText, getOrderStatusColor } from '../../lib/utils';
+import { formatCurrency, getOrderStatusText, getOrderStatusColor, calculateDistance, formatDistance } from '../../lib/utils';
 import { toast } from 'sonner';
 
 interface DeliveryPartnerInfo {
@@ -21,6 +25,15 @@ interface DeliveryPartnerInfo {
   };
 }
 
+interface BatchOrderDetails {
+  order: Order;
+  kitchen: Kitchen;
+  prepStatus: 'waiting' | 'preparing' | 'ready' | 'picked_up' | 'completed';
+  targetReadyTime: string | null;
+  actualReadyTime: string | null;
+  minutesRemaining: number | null;
+}
+
 export default function OrderTracking() {
   const { orderId } = useParams();
   const navigate = useNavigate();
@@ -29,9 +42,17 @@ export default function OrderTracking() {
   const [address, setAddress] = useState<Address | null>(null);
   const [deliveryPartner, setDeliveryPartner] = useState<DeliveryPartnerInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Batch order states
+  const [isBatchOrder, setIsBatchOrder] = useState(false);
+  const [batchOrders, setBatchOrders] = useState<BatchOrderDetails[]>([]);
+  const [totalBatchDistance, setTotalBatchDistance] = useState(0);
+  const [estimatedDeliveryTime, setEstimatedDeliveryTime] = useState<string | null>(null);
+  
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<any>({});
+  const polylineRef = useRef<any>(null);
 
   useEffect(() => {
     loadOrderDetails();
@@ -43,10 +64,14 @@ export default function OrderTracking() {
     if (order && kitchen && address && !loading) {
       // Delay to ensure Google Maps API is loaded
       setTimeout(() => {
-        initializeMap();
+        if (isBatchOrder) {
+          initializeBatchMap();
+        } else {
+          initializeMap();
+        }
       }, 500);
     }
-  }, [order, kitchen, address, loading]);
+  }, [order, kitchen, address, loading, isBatchOrder, batchOrders]);
 
   const loadOrderDetails = async () => {
     try {
@@ -61,6 +86,12 @@ export default function OrderTracking() {
 
       if (kitchenRes.data) setKitchen(kitchenRes.data);
       if (addressRes.data) setAddress(addressRes.data);
+
+      // Check if this is a batch order
+      if (orderData.batch_order_id) {
+        setIsBatchOrder(true);
+        await loadBatchOrderDetails(orderData.batch_order_id, addressRes.data);
+      }
 
       // Load delivery partner if assigned
       if (orderData.delivery_partner_id) {
@@ -82,6 +113,89 @@ export default function OrderTracking() {
       toast.error('Failed to load order');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadBatchOrderDetails = async (batchOrderId: string, customerAddress: Address) => {
+    try {
+      // Get all orders in this batch
+      const { data: batchOrdersData, error } = await supabase
+        .from('orders')
+        .select('*, kitchens(*)')
+        .eq('batch_order_id', batchOrderId)
+        .order('pickup_sequence', { ascending: true });
+
+      if (error) throw error;
+
+      // Transform to BatchOrderDetails
+      const batchDetails: BatchOrderDetails[] = (batchOrdersData || []).map((order) => {
+        const minutesRemaining = order.target_ready_time 
+          ? Math.round((new Date(order.target_ready_time).getTime() - Date.now()) / 60000)
+          : null;
+
+        let prepStatus: BatchOrderDetails['prepStatus'] = 'waiting';
+        if (order.actual_ready_time) {
+          prepStatus = order.status === 'delivered' ? 'completed' : 'picked_up';
+        } else if (['preparing', 'ready'].includes(order.status)) {
+          prepStatus = order.status === 'ready' ? 'ready' : 'preparing';
+        }
+
+        return {
+          order,
+          kitchen: order.kitchens,
+          prepStatus,
+          targetReadyTime: order.target_ready_time,
+          actualReadyTime: order.actual_ready_time,
+          minutesRemaining,
+        };
+      });
+
+      setBatchOrders(batchDetails);
+
+      // Calculate total route distance
+      if (customerAddress?.lat && customerAddress?.lng) {
+        let totalDistance = 0;
+        let prevLat = customerAddress.lat;
+        let prevLng = customerAddress.lng;
+
+        // Distance from delivery partner (if available) to first kitchen
+        if (deliveryPartner?.current_lat && deliveryPartner?.current_lng && batchDetails.length > 0) {
+          const firstKitchen = batchDetails[0].kitchen;
+          if (firstKitchen.lat && firstKitchen.lng) {
+            totalDistance += calculateDistance(
+              deliveryPartner.current_lat,
+              deliveryPartner.current_lng,
+              firstKitchen.lat,
+              firstKitchen.lng
+            );
+            prevLat = firstKitchen.lat;
+            prevLng = firstKitchen.lng;
+          }
+        }
+
+        // Distance between kitchens
+        for (let i = 1; i < batchDetails.length; i++) {
+          const kitchen = batchDetails[i].kitchen;
+          if (kitchen.lat && kitchen.lng) {
+            totalDistance += calculateDistance(prevLat, prevLng, kitchen.lat, kitchen.lng);
+            prevLat = kitchen.lat;
+            prevLng = kitchen.lng;
+          }
+        }
+
+        // Distance from last kitchen to customer
+        totalDistance += calculateDistance(prevLat, prevLng, customerAddress.lat, customerAddress.lng);
+        setTotalBatchDistance(totalDistance);
+
+        // Calculate ETA
+        const maxPrepTime = Math.max(...batchDetails.map(b => b.order.estimated_prep_time || 30));
+        const travelTime = Math.round(totalDistance * 3); // 3 mins per km
+        const totalMinutes = maxPrepTime + travelTime;
+        const eta = new Date(Date.now() + totalMinutes * 60000);
+        setEstimatedDeliveryTime(eta.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      }
+    } catch (error: any) {
+      console.error('Failed to load batch order details:', error);
     }
   };
 
@@ -180,6 +294,157 @@ export default function OrderTracking() {
     map.fitBounds(bounds);
   };
 
+  const initializeBatchMap = () => {
+    if (!mapRef.current || !address?.lat || !address?.lng || batchOrders.length === 0) return;
+    if (typeof google === 'undefined' || !google.maps) return;
+
+    const map = new google.maps.Map(mapRef.current, {
+      center: { lat: Number(address.lat), lng: Number(address.lng) },
+      zoom: 12,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: false,
+    });
+
+    mapInstanceRef.current = map;
+    const bounds = new google.maps.LatLngBounds();
+
+    // Clear existing markers
+    Object.values(markersRef.current).forEach((marker: any) => marker.setMap(null));
+    markersRef.current = {};
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+    }
+
+    // Create route path array
+    const routePath: google.maps.LatLngLiteral[] = [];
+
+    // Add delivery partner location if available
+    if (deliveryPartner?.current_lat && deliveryPartner?.current_lng) {
+      const deliveryMarker = new google.maps.Marker({
+        position: { lat: Number(deliveryPartner.current_lat), lng: Number(deliveryPartner.current_lng) },
+        map,
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+          scale: 8,
+          fillColor: '#3b82f6',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 3,
+        },
+        title: 'Delivery Partner',
+        zIndex: 1000,
+      });
+      markersRef.current.delivery = deliveryMarker;
+      bounds.extend({ lat: Number(deliveryPartner.current_lat), lng: Number(deliveryPartner.current_lng) });
+      routePath.push({ lat: Number(deliveryPartner.current_lat), lng: Number(deliveryPartner.current_lng) });
+    }
+
+    // Add kitchen markers with pickup sequence
+    batchOrders.forEach((batchDetail, index) => {
+      const k = batchDetail.kitchen;
+      if (!k.lat || !k.lng) return;
+
+      const position = { lat: Number(k.lat), lng: Number(k.lng) };
+      
+      // Custom marker with number
+      const marker = new google.maps.Marker({
+        position,
+        map,
+        label: {
+          text: `${batchDetail.order.pickup_sequence}`,
+          color: '#ffffff',
+          fontWeight: 'bold',
+          fontSize: '14px',
+        },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 16,
+          fillColor: batchDetail.prepStatus === 'ready' || batchDetail.prepStatus === 'picked_up' 
+            ? '#10b981' 
+            : batchDetail.prepStatus === 'preparing' 
+            ? '#f59e0b' 
+            : '#6b7280',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 3,
+        },
+        title: `${k.name} - Pickup #${batchDetail.order.pickup_sequence}`,
+      });
+
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="padding: 8px; min-width: 150px;">
+            <h3 style="font-weight: bold; margin-bottom: 4px;">Pickup #${batchDetail.order.pickup_sequence}</h3>
+            <p style="font-size: 14px; margin-bottom: 4px;">${k.name}</p>
+            <div style="font-size: 12px; color: #666;">
+              <p style="margin: 2px 0;">Status: <strong>${batchDetail.prepStatus}</strong></p>
+              ${batchDetail.targetReadyTime ? `<p style="margin: 2px 0;">Target: ${new Date(batchDetail.targetReadyTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>` : ''}
+            </div>
+          </div>
+        `,
+      });
+
+      marker.addListener('click', () => {
+        infoWindow.open(map, marker);
+      });
+
+      markersRef.current[`kitchen_${index}`] = marker;
+      bounds.extend(position);
+      routePath.push(position);
+    });
+
+    // Add customer marker
+    const customerPosition = { lat: Number(address.lat), lng: Number(address.lng) };
+    const customerMarker = new google.maps.Marker({
+      position: customerPosition,
+      map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 14,
+        fillColor: '#ec4899',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 3,
+      },
+      title: 'Your Location',
+    });
+    markersRef.current.customer = customerMarker;
+    bounds.extend(customerPosition);
+    routePath.push(customerPosition);
+
+    // Draw optimized route
+    if (routePath.length > 1) {
+      const polyline = new google.maps.Polyline({
+        path: routePath,
+        geodesic: true,
+        strokeColor: '#3b82f6',
+        strokeOpacity: 0.8,
+        strokeWeight: 5,
+      });
+      polyline.setMap(map);
+      polylineRef.current = polyline;
+
+      // Add arrows to show direction
+      const arrowSymbol = {
+        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+        scale: 3,
+        strokeColor: '#3b82f6',
+      };
+
+      polyline.setOptions({
+        icons: [{
+          icon: arrowSymbol,
+          offset: '50%',
+          repeat: '150px',
+        }],
+      });
+    }
+
+    // Fit bounds
+    map.fitBounds(bounds);
+  };
+
   const updateDeliveryMarker = (lat: number, lng: number) => {
     if (typeof google === 'undefined' || !google.maps) return;
     
@@ -224,6 +489,22 @@ export default function OrderTracking() {
     }));
   };
 
+  const getSyncStatus = () => {
+    if (!isBatchOrder || batchOrders.length === 0) return null;
+
+    const readyCount = batchOrders.filter(b => ['ready', 'picked_up', 'completed'].includes(b.prepStatus)).length;
+    const preparingCount = batchOrders.filter(b => b.prepStatus === 'preparing').length;
+    const waitingCount = batchOrders.filter(b => b.prepStatus === 'waiting').length;
+
+    return {
+      readyCount,
+      preparingCount,
+      waitingCount,
+      total: batchOrders.length,
+      isAllReady: readyCount === batchOrders.length,
+    };
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -237,6 +518,7 @@ export default function OrderTracking() {
   const timeline = getOrderTimeline();
   const isDelivered = order.status === 'delivered';
   const isCancelled = order.status === 'cancelled';
+  const syncStatus = getSyncStatus();
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -248,7 +530,10 @@ export default function OrderTracking() {
               <ArrowLeft className="h-6 w-6" />
             </button>
             <div>
-              <h1 className="text-xl font-bold">Track Order</h1>
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                {isBatchOrder && <Route className="h-5 w-5 text-primary" />}
+                Track Order
+              </h1>
               <p className="text-sm text-muted-foreground">{order.order_number}</p>
             </div>
           </div>
@@ -259,36 +544,200 @@ export default function OrderTracking() {
       </header>
 
       <div className="container mx-auto px-4 py-6 max-w-6xl">
+        {/* Batch Order Alert */}
+        {isBatchOrder && (
+          <Alert className="mb-6 border-primary/50 bg-primary/5">
+            <Route className="h-5 w-5 text-primary" />
+            <AlertDescription>
+              <div className="mt-2">
+                <p className="font-bold text-primary mb-2">🎉 Multi-Restaurant Order</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Store className="h-4 w-4 text-muted-foreground" />
+                    <span>{batchOrders.length} restaurants</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Navigation className="h-4 w-4 text-muted-foreground" />
+                    <span>{formatDistance(totalBatchDistance)}</span>
+                  </div>
+                  {estimatedDeliveryTime && (
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span>ETA {estimatedDeliveryTime}</span>
+                    </div>
+                  )}
+                  {syncStatus && (
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      <span>{syncStatus.readyCount}/{syncStatus.total} ready</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid lg:grid-cols-2 gap-6">
           {/* Left Column - Map & Timeline */}
           <div className="space-y-6">
             {/* Live Map */}
-            {kitchen?.lat && address?.lat && !isDelivered && !isCancelled && (
+            {((kitchen?.lat && address?.lat) || (isBatchOrder && batchOrders.length > 0)) && !isDelivered && !isCancelled && (
               <div className="bg-card border rounded-lg overflow-hidden">
                 <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-4 border-b">
                   <h3 className="font-semibold flex items-center gap-2">
                     <Navigation className="h-5 w-5 text-primary" />
-                    Live Tracking
+                    {isBatchOrder ? 'Optimized Route Visualization' : 'Live Tracking'}
                   </h3>
-                  <p className="text-sm text-muted-foreground">Real-time delivery location</p>
+                  <p className="text-sm text-muted-foreground">
+                    {isBatchOrder 
+                      ? `${batchOrders.length}-stop delivery route with synchronized pickups` 
+                      : 'Real-time delivery location'}
+                  </p>
                 </div>
-                <div ref={mapRef} className="h-80 md:h-96 w-full" />
+                <div ref={mapRef} className="h-80 md:h-[500px] w-full" />
                 <div className="p-4 border-t bg-muted/30">
-                  <div className="grid grid-cols-3 gap-4 text-xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-[#FF5200]"></div>
-                      <span className="text-muted-foreground">Kitchen</span>
-                    </div>
-                    {deliveryPartner && (
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rotate-45 bg-blue-500"></div>
-                        <span className="text-muted-foreground">Delivery Partner</span>
-                      </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    {isBatchOrder ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+                          <span className="text-muted-foreground">Waiting</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                          <span className="text-muted-foreground">Preparing</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <span className="text-muted-foreground">Ready</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-pink-500"></div>
+                          <span className="text-muted-foreground">Your Location</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-[#FF5200]"></div>
+                          <span className="text-muted-foreground">Kitchen</span>
+                        </div>
+                        {deliveryPartner && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rotate-45 bg-blue-500"></div>
+                            <span className="text-muted-foreground">Delivery Partner</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                          <span className="text-muted-foreground">Your Location</span>
+                        </div>
+                      </>
                     )}
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                      <span className="text-muted-foreground">Your Location</span>
-                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Batch Kitchen Status */}
+            {isBatchOrder && syncStatus && (
+              <div className="bg-card border rounded-lg p-6">
+                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                  <Store className="h-5 w-5 text-primary" />
+                  Kitchen Preparation Status
+                </h3>
+                
+                {/* Sync Progress */}
+                <div className="mb-4 p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">Synchronization Progress</span>
+                    <span className="text-sm font-bold text-primary">
+                      {syncStatus.readyCount}/{syncStatus.total}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-primary to-green-500 transition-all duration-500"
+                      style={{ width: `${(syncStatus.readyCount / syncStatus.total) * 100}%` }}
+                    />
+                  </div>
+                  {syncStatus.isAllReady && (
+                    <p className="text-xs text-green-600 font-medium mt-2">
+                      ✓ All kitchens ready! Pickup in progress
+                    </p>
+                  )}
+                </div>
+
+                {/* Kitchen List */}
+                <div className="space-y-3">
+                  {batchOrders.map((batchDetail) => {
+                    const statusColor = {
+                      waiting: 'bg-gray-100 text-gray-700',
+                      preparing: 'bg-orange-100 text-orange-700',
+                      ready: 'bg-green-100 text-green-700',
+                      picked_up: 'bg-blue-100 text-blue-700',
+                      completed: 'bg-green-100 text-green-700',
+                    }[batchDetail.prepStatus];
+
+                    const statusIcon = {
+                      waiting: Clock,
+                      preparing: ChefHat,
+                      ready: CheckCircle2,
+                      picked_up: Bike,
+                      completed: CheckCircle2,
+                    }[batchDetail.prepStatus];
+
+                    const StatusIcon = statusIcon;
+
+                    return (
+                      <div key={batchDetail.order.id} className="border rounded-lg p-3 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0">
+                            <Badge className="bg-primary text-white">#{batchDetail.order.pickup_sequence}</Badge>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm mb-1">{batchDetail.kitchen.name}</h4>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Badge variant="secondary" className={`text-xs ${statusColor}`}>
+                                <StatusIcon className="h-3 w-3 mr-1" />
+                                {batchDetail.prepStatus}
+                              </Badge>
+                              {batchDetail.targetReadyTime && !batchDetail.actualReadyTime && (
+                                <span className="text-xs text-muted-foreground">
+                                  Target: {new Date(batchDetail.targetReadyTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              )}
+                              {batchDetail.minutesRemaining !== null && batchDetail.minutesRemaining > 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  <Clock className="h-3 w-3 mr-1" />
+                                  {batchDetail.minutesRemaining}m left
+                                </Badge>
+                              )}
+                            </div>
+                            {batchDetail.order.is_delayed && (
+                              <div className="mt-2 text-xs text-orange-600 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {batchDetail.order.delay_reason || 'Slight delay'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right text-xs text-muted-foreground">
+                            {batchDetail.order.items.length} item{batchDetail.order.items.length > 1 ? 's' : ''}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Info Box */}
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-blue-800">
+                      All kitchens are synchronized within a 5-minute window to ensure your food arrives fresh and hot!
+                    </p>
                   </div>
                 </div>
               </div>
@@ -376,7 +825,7 @@ export default function OrderTracking() {
             )}
 
             {/* Kitchen Details */}
-            {kitchen && (
+            {!isBatchOrder && kitchen && (
               <div className="bg-card border rounded-lg p-6">
                 <div className="flex items-start gap-4">
                   {kitchen.image_url && (
@@ -415,7 +864,9 @@ export default function OrderTracking() {
 
             {/* Order Items */}
             <div className="bg-card border rounded-lg p-6">
-              <h3 className="font-semibold mb-4">Order Summary</h3>
+              <h3 className="font-semibold mb-4">
+                {isBatchOrder ? `Items from ${kitchen?.name}` : 'Order Summary'}
+              </h3>
               <div className="space-y-3">
                 {order.items.map((item, i) => (
                   <div key={i} className="flex justify-between items-start">
@@ -453,6 +904,15 @@ export default function OrderTracking() {
                   Payment: {order.payment_method === 'cod' ? 'Cash on Delivery' : 'UPI'}
                 </p>
               </div>
+
+              {isBatchOrder && (
+                <div className="mt-4 p-3 bg-primary/5 rounded-lg">
+                  <p className="text-xs font-medium mb-1">💡 Multi-Restaurant Order</p>
+                  <p className="text-xs text-muted-foreground">
+                    This is part of a {batchOrders.length}-restaurant order. Total: {formatCurrency(batchOrders.reduce((sum, b) => sum + b.order.total, 0))}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Delivery Instructions */}
