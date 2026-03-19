@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChefHat, Loader2 } from 'lucide-react';
+import { ChefHat, Loader2, MapPin } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -55,53 +55,62 @@ export default function LoginPage() {
       const authUser = await mapSupabaseUser(user);
       login(authUser);
       
-      // Update current location automatically on login
-      try {
-        const location = await getCurrentLocation();
-        
-        // Check if user has any address, if not create one
-        if (authUser.role === 'customer' || authUser.role === 'delivery_partner') {
-          const { data: existingAddresses } = await supabase
-            .from('addresses')
-            .select('id')
-            .eq('user_id', user.id)
-            .limit(1);
-          
-          if (!existingAddresses || existingAddresses.length === 0) {
-            // Create first address automatically
-            await supabase.from('addresses').insert({
-              user_id: user.id,
-              label: 'Current Location',
-              address_line: 'Auto-detected location',
-              lat: location.lat,
-              lng: location.lng,
-              is_default: true,
-            });
-            toast.success('Location saved automatically');
-          } else {
-            // Update default address location
-            await supabase.from('addresses')
-              .update({
+      // Update current location automatically on login (in background)
+      if (authUser.role === 'customer' || authUser.role === 'delivery_partner') {
+        getCurrentLocation()
+          .then(async (location) => {
+            // Check if user has any address, if not create one
+            const { data: existingAddresses } = await supabase
+              .from('addresses')
+              .select('id')
+              .eq('user_id', user.id)
+              .limit(1);
+            
+            if (!existingAddresses || existingAddresses.length === 0) {
+              // Create first address automatically
+              await supabase.from('addresses').insert({
+                user_id: user.id,
+                label: 'Home',
+                address_line: `Location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
                 lat: location.lat,
                 lng: location.lng,
-              })
-              .eq('user_id', user.id)
-              .eq('is_default', true);
-          }
-        }
-        
-        // Update delivery partner location
-        if (authUser.role === 'delivery_partner') {
-          await supabase.from('delivery_partners').update({
-            current_lat: location.lat,
-            current_lng: location.lng,
-          }).eq('user_id', user.id);
-        }
-      } catch (locError) {
-        console.error('Location update failed:', locError);
-        // Don't block login if location fails
+                is_default: true,
+              });
+              toast.success('📍 Location saved automatically', { duration: 2000 });
+            } else {
+              // Silently update default address location
+              await supabase.from('addresses')
+                .update({
+                  lat: location.lat,
+                  lng: location.lng,
+                })
+                .eq('user_id', user.id)
+                .eq('is_default', true);
+            }
+            
+            // Update delivery partner location
+            if (authUser.role === 'delivery_partner') {
+              const { data: partnerExists } = await supabase
+                .from('delivery_partners')
+                .select('id')
+                .eq('user_id', user.id)
+                .single();
+                
+              if (partnerExists) {
+                await supabase.from('delivery_partners').update({
+                  current_lat: location.lat,
+                  current_lng: location.lng,
+                }).eq('user_id', user.id);
+              }
+            }
+          })
+          .catch((locError) => {
+            console.error('Location update failed:', locError);
+            // Don't show error to user - non-blocking
+          });
       }
       
+      // Navigate immediately (don't wait for location)
       switch (authUser.role) {
         case 'customer':
           navigate('/customer');
@@ -161,8 +170,19 @@ export default function LoginPage() {
               />
             </div>
             <Button type="submit" className="w-full gradient-primary" disabled={loading}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Login'}
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Logging in...
+                </>
+              ) : (
+                'Login'
+              )}
             </Button>
+            <p className="text-xs text-center text-muted-foreground mt-2">
+              <MapPin className="h-3 w-3 inline mr-1" />
+              Your location will be auto-updated for better delivery
+            </p>
           </form>
 
           <div className="mt-6 text-center">

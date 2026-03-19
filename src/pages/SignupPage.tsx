@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ChefHat, Loader2 } from 'lucide-react';
+import { ChefHat, Loader2, MapPin, Navigation } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -76,6 +76,9 @@ export default function SignupPage() {
       const authUser = await mapSupabaseUser(user);
       login(authUser);
       
+      // Show location capture toast
+      const locationToast = toast.loading('📍 Capturing your location...', { duration: Infinity });
+      
       // Capture and save current location automatically
       try {
         const location = await getCurrentLocation();
@@ -84,26 +87,44 @@ export default function SignupPage() {
         if (role === 'customer' || role === 'delivery_partner') {
           await supabase.from('addresses').insert({
             user_id: user.id,
-            label: 'Current Location',
-            address_line: 'Auto-detected location',
+            label: 'Home',
+            address_line: `Location: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`,
             lat: location.lat,
             lng: location.lng,
             is_default: true,
           });
-          toast.success('Location saved automatically');
         }
         
         // Update delivery partner location if applicable
         if (role === 'delivery_partner') {
-          await supabase.from('delivery_partners').update({
-            current_lat: location.lat,
-            current_lng: location.lng,
-          }).eq('user_id', user.id);
+          // Check if delivery_partners record exists first
+          const { data: existingPartner } = await supabase
+            .from('delivery_partners')
+            .select('id')
+            .eq('user_id', user.id)
+            .single();
+            
+          if (existingPartner) {
+            await supabase.from('delivery_partners').update({
+              current_lat: location.lat,
+              current_lng: location.lng,
+            }).eq('user_id', user.id);
+          }
         }
-      } catch (locError) {
+        
+        toast.dismiss(locationToast);
+        toast.success('✅ Location saved successfully!', { icon: '📍' });
+      } catch (locError: any) {
+        toast.dismiss(locationToast);
         console.error('Location capture failed:', locError);
+        toast.error('Could not capture location. You can add it later from profile.', {
+          duration: 3000,
+        });
         // Don't block signup if location fails
       }
+      
+      // Small delay to show location success message
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       switch (role) {
         case 'customer':
@@ -215,8 +236,24 @@ export default function SignupPage() {
                 <p className="text-xs text-muted-foreground mt-1">OTP sent to {email}</p>
               </div>
               <Button type="submit" className="w-full gradient-primary" disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify & Sign Up'}
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Creating account...
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="h-4 w-4 mr-2" />
+                    Verify & Sign Up
+                  </>
+                )}
               </Button>
+              {(role === 'customer' || role === 'delivery_partner') && (
+                <p className="text-xs text-center text-muted-foreground mt-2">
+                  <MapPin className="h-3 w-3 inline mr-1" />
+                  Your location will be auto-detected for better delivery experience
+                </p>
+              )}
               <Button
                 type="button"
                 variant="outline"
