@@ -2,6 +2,9 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Toaster } from 'sonner';
 import { useAuth } from './hooks/useAuth';
 import { Loader2 } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import SplashScreen from './components/SplashScreen';
+import OnboardingScreen from './components/OnboardingScreen';
 
 // Auth Pages
 import LandingPage from './pages/LandingPage';
@@ -104,8 +107,37 @@ function AppShell({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
   );
 }
 
+type AppPhase = 'splash' | 'onboarding' | 'app';
+
 function App() {
   const { user, loading } = useAuth();
+  const alreadyOnboarded = localStorage.getItem('foodhub_onboarded') === '1';
+  const [phase, setPhase] = useState<AppPhase>('splash');
+
+  const handleSplashDone = useCallback(() => {
+    setPhase(alreadyOnboarded ? 'app' : 'onboarding');
+  }, [alreadyOnboarded]);
+
+  const handleOnboardingDone = useCallback(() => {
+    setPhase('app');
+  }, []);
+
+  // Show splash while auth is loading too (masks the loading state)
+  if (phase === 'splash') {
+    return (
+      <div className="mobile-app-shell">
+        <SplashScreen onDone={handleSplashDone} />
+      </div>
+    );
+  }
+
+  if (phase === 'onboarding') {
+    return (
+      <div className="mobile-app-shell">
+        <OnboardingScreen onDone={handleOnboardingDone} />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
