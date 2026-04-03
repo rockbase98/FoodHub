@@ -5,6 +5,7 @@ import {
   ShoppingBag, Flame, TrendingUp, Leaf, X, SlidersHorizontal,
   Navigation2, ChevronDown
 } from 'lucide-react';
+import NotificationBell from '../../components/NotificationBell';
 import { supabase } from '../../lib/supabase';
 import { Kitchen, Banner } from '../../types';
 import { useAuthStore } from '../../stores/authStore';
@@ -195,19 +196,25 @@ export default function CustomerHome() {
             </button>
           </div>
 
-          {/* Profile pill */}
-          <Link
-            to={user ? '/customer/profile' : '/login'}
-            className="flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center"
-          >
-            {user ? (
-              <span className="text-sm font-bold text-primary">
-                {user.username?.charAt(0).toUpperCase() || 'U'}
-              </span>
-            ) : (
-              <span className="text-xs font-bold text-primary">In</span>
-            )}
-          </Link>
+          {/* Right controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Notification bell (only for logged-in customers) */}
+            {user && <NotificationBell />}
+
+            {/* Profile pill */}
+            <Link
+              to={user ? '/customer/profile' : '/login'}
+              className="flex-shrink-0 w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center"
+            >
+              {user ? (
+                <span className="text-sm font-bold text-primary">
+                  {user.username?.charAt(0).toUpperCase() || 'U'}
+                </span>
+              ) : (
+                <span className="text-xs font-bold text-primary">In</span>
+              )}
+            </Link>
+          </div>
         </div>
 
         {/* Search bar */}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, X, Bell, BellOff } from 'lucide-react';
 
 interface Props {
   onDone: () => void;
@@ -48,9 +48,25 @@ export default function OnboardingScreen({ onDone }: Props) {
 
   const slide = SLIDES[current];
   const isLast = current === SLIDES.length - 1;
+  const [showPermission, setShowPermission] = useState(false);
+
+  const requestNotifPermission = async () => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+    finish();
+  };
 
   const goNext = () => {
-    if (isLast) { finish(); return; }
+    if (isLast) {
+      // Show permission screen instead of finishing directly
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        setShowPermission(true);
+      } else {
+        finish();
+      }
+      return;
+    }
     setDir(1);
     setExiting(true);
     setTimeout(() => { setCurrent((p) => p + 1); setExiting(false); }, 220);
@@ -60,6 +76,81 @@ export default function OnboardingScreen({ onDone }: Props) {
     localStorage.setItem('foodhub_onboarded', '1');
     onDone();
   };
+
+  /* ── Notification permission screen ── */
+  if (showPermission) {
+    return (
+      <div className="fixed inset-0 z-[9998] flex flex-col items-center justify-center bg-white select-none px-8 text-center">
+        {/* Animated bell */}
+        <div
+          className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-lg"
+          style={{
+            background: 'linear-gradient(135deg, #FF6B35, #FF8E53)',
+            animation: 'bell-shake 1.5s ease-in-out infinite',
+          }}
+        >
+          <Bell className="h-12 w-12 text-white" strokeWidth={2} />
+        </div>
+
+        <h2 className="font-black text-2xl mb-2" style={{ fontFamily: 'Poppins, sans-serif' }}>
+          Stay Updated!
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed mb-2">
+          Get instant alerts when your food is being prepared, picked up, and on its way.
+        </p>
+        <div className="flex flex-col gap-2 w-full max-w-xs mb-8 mt-2">
+          {["🍳 Order accepted by kitchen", "🛵 Rider picked up your food", "🏠 Food delivered!"].map((t) => (
+            <div key={t} className="flex items-center gap-2.5 bg-orange-50 rounded-xl px-3.5 py-2.5 text-left">
+              <span className="text-base">{t.slice(0,2)}</span>
+              <span className="text-xs font-medium text-orange-900">{t.slice(3)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="w-full max-w-xs space-y-3">
+          <button
+            onClick={requestNotifPermission}
+            className="w-full flex items-center justify-center gap-2 font-bold rounded-2xl tap-highlight"
+            style={{
+              background: 'linear-gradient(135deg, #FF6B35, #E84A1A)',
+              color: '#fff',
+              height: 52,
+              fontSize: 15,
+              border: 'none',
+              cursor: 'pointer',
+              minHeight: 52,
+            }}
+          >
+            <Bell className="h-4 w-4" /> Allow Notifications
+          </button>
+          <button
+            onClick={finish}
+            className="w-full flex items-center justify-center gap-1.5 font-semibold rounded-2xl tap-highlight"
+            style={{
+              background: 'transparent',
+              color: '#999',
+              height: 44,
+              fontSize: 13,
+              border: '1px solid #eee',
+              cursor: 'pointer',
+              minHeight: 44,
+            }}
+          >
+            <BellOff className="h-3.5 w-3.5" /> Maybe later
+          </button>
+        </div>
+
+        <style>{`
+          @keyframes bell-shake {
+            0%,100% { transform: rotate(0deg); }
+            10%,30%  { transform: rotate(-10deg); }
+            20%,40%  { transform: rotate(10deg); }
+            50%      { transform: rotate(0deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[9998] flex flex-col bg-white select-none overflow-hidden">
