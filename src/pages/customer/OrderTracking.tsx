@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, MapPin, Clock, Package, CheckCircle2, Bike, Phone, Star } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Package, CheckCircle2, Bike, Phone, Star, ChefHat, Truck } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { supabase } from '../../lib/supabase';
 import { Order, Kitchen, Address, Delivery } from '../../types';
@@ -66,21 +66,22 @@ export default function OrderTracking() {
   }
 
   const statusSteps = [
-    { key: 'pending', label: 'Order Placed', icon: Package, color: 'text-primary' },
-    { key: 'accepted', label: 'Order Confirmed', icon: CheckCircle2, color: 'text-success' },
-    { key: 'preparing', label: 'Preparing Food', icon: Package, color: 'text-orange-500' },
-    { key: 'ready', label: 'Ready for Pickup', icon: CheckCircle2, color: 'text-success' },
-    { key: 'picked_up', label: 'Picked Up', icon: Bike, color: 'text-blue-500' },
-    { key: 'out_for_delivery', label: 'Out for Delivery', icon: Bike, color: 'text-blue-500' },
-    { key: 'delivered', label: 'Delivered', icon: CheckCircle2, color: 'text-success' },
+    { key: 'pending', label: 'Order Placed', desc: 'Your order has been received', icon: Package, emoji: '📋', color: 'bg-orange-500' },
+    { key: 'accepted', label: 'Order Confirmed', desc: 'Restaurant accepted your order', icon: CheckCircle2, emoji: '✅', color: 'bg-green-500' },
+    { key: 'preparing', label: 'Kitchen is Cooking', desc: 'Chef is preparing your food', icon: ChefHat, emoji: '👨‍🍳', color: 'bg-yellow-500' },
+    { key: 'ready', label: 'Ready for Pickup', desc: 'Your food is packed & ready', icon: CheckCircle2, emoji: '📦', color: 'bg-teal-500' },
+    { key: 'picked_up', label: 'Picked Up', desc: 'Delivery partner has the order', icon: Bike, emoji: '🛵', color: 'bg-blue-500' },
+    { key: 'out_for_delivery', label: 'Out for Delivery', desc: 'On the way to your address', icon: Truck, emoji: '🚀', color: 'bg-purple-500' },
+    { key: 'delivered', label: 'Delivered!', desc: 'Enjoy your meal 🎉', icon: CheckCircle2, emoji: '🎉', color: 'bg-green-600' },
   ];
 
   const currentStepIndex = statusSteps.findIndex((step) => step.key === order.status);
+  const progressPercent = currentStepIndex >= 0 ? (currentStepIndex / (statusSteps.length - 1)) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-background pb-6">
+    <div className="min-h-screen bg-[#f0f0f5] pb-6">
       {/* Header */}
-      <header className="bg-card border-b sticky top-0 z-10 shadow-sm">
+      <header className="bg-white border-b sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
           <button onClick={() => navigate('/customer/orders')} className="hover:scale-110 transition-transform">
             <ArrowLeft className="h-6 w-6" />
@@ -93,50 +94,76 @@ export default function OrderTracking() {
       </header>
 
       <div className="container mx-auto px-4 py-6 max-w-2xl space-y-4">
-        {/* Order Status Timeline */}
-        <div className="bg-card rounded-2xl p-6 card-shadow-lg">
-          <h2 className="font-bold text-lg mb-6">Order Status</h2>
+        {/* ETA Banner */}
+        <div className="bg-primary text-white rounded-2xl p-5 flex items-center gap-4">
+          <div className="text-5xl">
+            {statusSteps[currentStepIndex]?.emoji || '📋'}
+          </div>
+          <div className="flex-1">
+            <p className="text-lg font-bold">{statusSteps[currentStepIndex]?.label || 'Processing'}</p>
+            <p className="text-sm opacity-90">{statusSteps[currentStepIndex]?.desc}</p>
+            {order.status !== 'delivered' && order.status !== 'cancelled' && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <Clock className="h-4 w-4" />
+                <span className="text-sm font-medium">Est. {kitchen?.delivery_time || '30-40 mins'}</span>
+              </div>
+            )}
+          </div>
+        </div>
 
+        {/* Progress Bar */}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold text-base">Order Progress</h2>
+            <span className="text-sm text-primary font-semibold">{Math.round(progressPercent)}%</span>
+          </div>
+          <div className="w-full bg-muted rounded-full h-2.5 mb-6">
+            <div
+              className="bg-primary h-2.5 rounded-full transition-all duration-700"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+
+          {/* Step Timeline */}
           <div className="relative">
-            {/* Progress Line */}
             <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-muted" />
             <div
-              className="absolute left-5 top-0 w-0.5 bg-primary transition-all duration-500"
-              style={{
-                height: `${(currentStepIndex / (statusSteps.length - 1)) * 100}%`,
-              }}
+              className="absolute left-5 top-0 w-0.5 bg-primary transition-all duration-700"
+              style={{ height: `${progressPercent}%` }}
             />
 
-            {/* Steps */}
-            <div className="space-y-6 relative">
+            <div className="space-y-5 relative">
               {statusSteps.map((step, index) => {
-                const isCompleted = index <= currentStepIndex;
+                const isCompleted = index < currentStepIndex;
                 const isCurrent = index === currentStepIndex;
-                const Icon = step.icon;
+                const isPending = index > currentStepIndex;
 
                 return (
-                  <div key={step.key} className="flex items-start gap-4">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                        isCompleted
-                          ? 'bg-primary text-white shadow-lg scale-110'
-                          : 'bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      <Icon className="h-5 w-5" />
+                  <div key={step.key} className={`flex items-start gap-4 transition-all duration-300 ${isPending ? 'opacity-40' : ''}`}>
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 z-10 transition-all duration-500 ${
+                      isCompleted ? 'bg-primary text-white shadow-md'
+                      : isCurrent ? `${step.color} text-white shadow-lg ring-4 ring-primary/20 animate-pulse`
+                      : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {isCompleted ? (
+                        <CheckCircle2 className="h-5 w-5" />
+                      ) : (
+                        <span className="text-base">{step.emoji}</span>
+                      )}
                     </div>
-                    <div className="flex-1 pt-1">
-                      <p
-                        className={`font-semibold ${
-                          isCurrent ? 'text-primary text-lg' : isCompleted ? 'text-foreground' : 'text-muted-foreground'
-                        }`}
-                      >
+                    <div className="flex-1 pt-1.5">
+                      <p className={`font-semibold leading-tight ${
+                        isCurrent ? 'text-primary text-base' : isCompleted ? 'text-foreground' : 'text-muted-foreground text-sm'
+                      }`}>
                         {step.label}
                       </p>
+                      {(isCompleted || isCurrent) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{step.desc}</p>
+                      )}
                       {isCurrent && (
-                        <div className="mt-1 flex items-center gap-2">
+                        <div className="mt-1.5 flex items-center gap-1.5">
                           <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                          <span className="text-sm text-primary font-medium">In Progress</span>
+                          <span className="text-xs text-primary font-semibold">Currently here</span>
                         </div>
                       )}
                     </div>
@@ -149,7 +176,7 @@ export default function OrderTracking() {
 
         {/* Restaurant Details */}
         {kitchen && (
-          <div className="bg-card rounded-2xl p-5 border card-shadow">
+          <div className="bg-white rounded-2xl p-5 border shadow-sm">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-400 to-pink-400 flex items-center justify-center flex-shrink-0">
                 <span className="text-3xl">🍽️</span>
@@ -167,7 +194,7 @@ export default function OrderTracking() {
 
         {/* Delivery Address */}
         {address && (
-          <div className="bg-card rounded-2xl p-5 border card-shadow">
+          <div className="bg-white rounded-2xl p-5 border shadow-sm">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center flex-shrink-0">
                 <MapPin className="h-5 w-5 text-success" />
@@ -184,7 +211,7 @@ export default function OrderTracking() {
         )}
 
         {/* Order Items */}
-        <div className="bg-card rounded-2xl p-5 border card-shadow">
+        <div className="bg-white rounded-2xl p-5 border shadow-sm">
           <h3 className="font-bold text-base mb-4">Order Items</h3>
           <div className="space-y-3">
             {order.items.map((item, index) => (
@@ -207,7 +234,7 @@ export default function OrderTracking() {
         </div>
 
         {/* Bill Details */}
-        <div className="bg-card rounded-2xl p-5 border card-shadow">
+        <div className="bg-white rounded-2xl p-5 border shadow-sm">
           <h3 className="font-bold text-base mb-4">Bill Details</h3>
           <div className="space-y-2.5">
             <div className="flex justify-between text-sm">
