@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, MapPin, CheckCircle2, Navigation, Wifi, WifiOff,
-  Clock, Phone, AlertTriangle, RefreshCw, Bike, Package, Truck
+  Clock, Phone, AlertTriangle, RefreshCw, Bike, Package, Truck,
+  Map, ChevronDown, ChevronUp
 } from 'lucide-react';
+import DeliveryMap from '../../components/features/DeliveryMap';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { supabase } from '../../lib/supabase';
@@ -39,6 +41,8 @@ export default function ActiveDelivery() {
   const [nextBroadcastIn, setNextBroadcastIn] = useState(BROADCAST_INTERVAL_MS / 1000);
   const [isUpdatingManually, setIsUpdatingManually] = useState(false);
   const [deliveryId, setDeliveryId] = useState<string | null>(null);
+
+  const [mapExpanded, setMapExpanded] = useState(true);
 
   const broadcastTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownRef = useRef<NodeJS.Timeout | null>(null);
@@ -431,6 +435,90 @@ export default function ActiveDelivery() {
                 : '📱 GPS location is shared every 15 seconds while broadcasting'}
             </p>
           </div>
+        </div>
+
+        {/* ── Navigation Map ────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+          <button
+            onClick={() => setMapExpanded(!mapExpanded)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                isBroadcasting ? 'bg-green-100' : 'bg-blue-100'
+              }`}>
+                <Map className={`h-4 w-4 ${isBroadcasting ? 'text-green-600' : 'text-blue-600'}`} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-sm">Navigation Map</p>
+                <p className="text-xs text-muted-foreground">
+                  {isBroadcasting ? 'Your position updates in real time' : 'Kitchen → You → Customer'}
+                </p>
+              </div>
+              {isBroadcasting && locationState && (
+                <span className="flex items-center gap-1 text-[10px] font-bold text-green-600 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  LIVE
+                </span>
+              )}
+            </div>
+            {mapExpanded ? (
+              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+            )}
+          </button>
+
+          {mapExpanded && (
+            <div className="px-4 pb-4">
+              <DeliveryMap
+                kitchenLat={kitchen?.lat}
+                kitchenLng={kitchen?.lng}
+                customerLat={address?.lat}
+                customerLng={address?.lng}
+                riderLat={locationState?.lat ?? null}
+                riderLng={locationState?.lng ?? null}
+                kitchenName={kitchen?.name || 'Kitchen'}
+                customerAddress={address?.address_line || 'Customer'}
+                orderStatus={order.status}
+              />
+              {/* Waypoint strip */}
+              <div className="mt-3 flex items-center gap-2 overflow-x-auto scrollbar-hide py-1">
+                <div className="flex items-center gap-1.5 bg-green-50 border border-green-200 rounded-full px-3 py-1.5 flex-shrink-0">
+                  <span className="text-sm">🍽️</span>
+                  <span className="text-xs font-medium text-green-700 max-w-[90px] truncate">
+                    {kitchen?.name || 'Kitchen'}
+                  </span>
+                </div>
+                <span className="text-muted-foreground text-lg flex-shrink-0">→</span>
+                <div className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 flex-shrink-0 border ${
+                  locationState
+                    ? 'bg-orange-50 border-orange-200'
+                    : 'bg-muted border-border'
+                }`}>
+                  <span className="text-sm">🏍️</span>
+                  <span className={`text-xs font-medium max-w-[80px] truncate ${
+                    locationState ? 'text-orange-700' : 'text-muted-foreground'
+                  }`}>
+                    {locationState ? 'You (Live)' : 'You (GPS off)'}
+                  </span>
+                </div>
+                <span className="text-muted-foreground text-lg flex-shrink-0">→</span>
+                <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1.5 flex-shrink-0">
+                  <span className="text-sm">📍</span>
+                  <span className="text-xs font-medium text-blue-700 max-w-[90px] truncate">
+                    {address?.label || 'Customer'}
+                  </span>
+                </div>
+              </div>
+              {locationState && (
+                <p className="text-[10px] text-center text-muted-foreground mt-2">
+                  🏍️ Your position: {locationState.lat.toFixed(5)}, {locationState.lng.toFixed(5)}
+                  {isBroadcasting && ` • Updates every ${BROADCAST_INTERVAL_MS / 1000}s`}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Pickup Location ────────────────────────────────────── */}
